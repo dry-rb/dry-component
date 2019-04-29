@@ -201,6 +201,34 @@ module Dry
         #
         #   # system/boot/db.rb
         #   #
+        #   # Optional component registration based on condition broc
+        #   MyApp.boot(:db, if: -> { !ENV['DB_URL'].empty? }) do |container|
+        #     start do
+        #       require 'db'
+        #       DB.configure(ENV['DB_URL'], logger: logger)
+        #       container.register(:db, DB.new)
+        #     end
+        #   end
+        #
+        #   # system/boot/db.rb
+        #   #
+        #   # Optional component registration based on container class method
+        #   class MyApp
+        #     def self.allow_boot_db?
+        #       false
+        #     end
+        #   end
+        #
+        #   MyApp.boot(:db, if: :allow_boot_db?) do |container|
+        #     start do
+        #       require 'db'
+        #       DB.configure(ENV['DB_URL'], logger: logger)
+        #       container.register(:db, DB.new)
+        #     end
+        #   end
+        #
+        #   # system/boot/db.rb
+        #   #
         #   # Component registration under a namespace. This will register the
         #   # db object under `persistence.db` key
         #   MyApp.namespace(:persistence) do |persistence|
@@ -216,7 +244,22 @@ module Dry
         # @return [self]
         #
         # @api public
-        def boot(name, opts = {}, &block)
+        def boot(name, **opts, &block)
+          boot_condition = opts[:if]
+
+          if boot_condition
+            begin
+              case boot_condition
+              when Symbol
+                return unless __send__(boot_condition)
+              else
+                return unless boot_condition.call
+              end
+            rescue NoMethodError => e
+              e.name == :call ? raise(InvalidBootConditionError, name) : raise
+            end
+          end
+
           if components.key?(name)
             raise DuplicatedComponentKeyError, "Bootable component #{name.inspect} was already registered"
           end
@@ -234,7 +277,7 @@ module Dry
         deprecate :finalize, :boot
 
         # @api private
-        def boot_external(identifier, from:, key: nil, namespace: nil, &block)
+        def boot_external(identifier, from:, key: nil, namespace: nil, **_opts, &block)
           component = System.providers[from].component(
             identifier, key: key, namespace: namespace, finalize: block, container: self
           )
@@ -245,7 +288,7 @@ module Dry
         end
 
         # @api private
-        def boot_local(identifier, namespace: nil, &block)
+        def boot_local(identifier, namespace: nil, **_opts, &block)
           component = Components::Bootable.new(identifier, container: self, namespace: namespace, &block)
 
           booter.register_component(component)

@@ -14,6 +14,10 @@ RSpec.describe Dry::System::Container, '.boot' do
           config.root = SPEC_ROOT.join('fixtures/test')
         end
 
+        def self.allow_boot?
+          true
+        end
+
         boot(:db) do
           register(:db, Test::DB)
 
@@ -145,7 +149,7 @@ RSpec.describe Dry::System::Container, '.boot' do
     }.to raise_error(Dry::System::DuplicatedComponentKeyError, /logger/)
   end
 
-  it 'allow setting namespace to true' do
+  it 'allows setting namespace to true' do
     system.boot(:api, namespace: true) do
       start do
         register(:client, 'connected')
@@ -153,6 +157,54 @@ RSpec.describe Dry::System::Container, '.boot' do
     end
 
     expect(system['api.client']).to eql('connected')
+  end
+
+  it 'allows condition proc for booting' do
+    system.boot(:disabled_client, if: -> { false }) do
+      start { register(:disabled_client, 'connected') }
+    end
+
+    system.boot(:enabled_client, if: -> { true }) do
+      start { register(:enabled_client, 'connected') }
+    end
+
+    expect(system['enabled_client']).to eql('connected')
+
+    expect { system['disabled_client'] }
+      .to raise_error(Dry::System::ComponentLoadError, /could not load component/)
+  end
+
+  it 'allows to use condition funcion from container for booting' do
+    system.boot(:enabled_client, if: :allow_boot?) do
+      start { register(:enabled_client, 'connected') }
+    end
+
+    expect(system['enabled_client']).to eql('connected')
+
+    allow(Test::App).to receive(:allow_boot?).and_return(false)
+
+    system.boot(:disabled_client, if: :allow_boot?) do
+      start { register(:disabled_client, 'connected') }
+    end
+
+    expect { system['disabled_client'] }
+      .to raise_error(Dry::System::ComponentLoadError, /could not load component/)
+  end
+
+  it 'raises when booting condition has wrong type' do
+    expect do
+      system.boot(:disabled_client, if: true) do
+        start { register(:disabled_client, 'connected') }
+      end
+    end.to raise_error(Dry::System::InvalidBootConditionError, /undefined method/)
+  end
+
+  it 'raises when booting condition raises' do
+    expect do
+      system.boot(:disabled_client, if: -> { raise }) do
+        start { register(:disabled_client, 'connected') }
+      end
+    end.to raise_error(RuntimeError)
   end
 
   it 'raises when namespace value is not valid' do
