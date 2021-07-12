@@ -5,7 +5,7 @@ require "ostruct"
 RSpec.describe Dry::System::Container, ".boot" do
   subject(:system) { Test::Container }
   let(:setup_db) do
-    system.boot(:db) do
+    system.register_bootable(:db) do
       init do
         module Test
           class Db < OpenStruct
@@ -24,7 +24,7 @@ RSpec.describe Dry::System::Container, ".boot" do
   end
 
   let(:setup_client) do
-    system.boot(:client) do
+    system.register_bootable(:client) do
       init do
         module Test
           class Client < OpenStruct
@@ -52,7 +52,7 @@ RSpec.describe Dry::System::Container, ".boot" do
     end
 
     it "auto-boots dependency of a bootable component" do
-      system.start(:client)
+      system.start_bootable(:client)
 
       expect(system[:client]).to be_a(Client)
       expect(system[:client].logger).to be_a(Logger)
@@ -66,7 +66,7 @@ RSpec.describe Dry::System::Container, ".boot" do
     end
 
     it "uses defaults" do
-      system.boot(:api) do
+      system.register_bootable(:api) do
         settings do
           key :token, Types::String.default("xxx")
         end
@@ -76,7 +76,7 @@ RSpec.describe Dry::System::Container, ".boot" do
         end
       end
 
-      system.start(:api)
+      system.start_bootable(:api)
 
       client = system[:client]
 
@@ -91,7 +91,7 @@ RSpec.describe Dry::System::Container, ".boot" do
     end
 
     it "allows lazy-booting" do
-      system.boot(:db) do
+      system.register_bootable(:db) do
         init do
           module Test
             class Db < OpenStruct
@@ -114,10 +114,10 @@ RSpec.describe Dry::System::Container, ".boot" do
 
     it "allows component to be stopped" do
       setup_db
-      system.start(:db)
+      system.start_bootable(:db)
 
       conn = system["db.conn"]
-      system.stop(:db)
+      system.stop_bootable(:db)
 
       expect(conn.established).to eq false
     end
@@ -126,7 +126,7 @@ RSpec.describe Dry::System::Container, ".boot" do
       setup_db
 
       expect {
-        system.stop(:db)
+        system.stop_bootable(:db)
       }.to raise_error(Dry::System::ComponentNotStartedError)
     end
 

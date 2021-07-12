@@ -186,7 +186,7 @@ module Dry
         #   # system/boot/db.rb
         #   #
         #   # Simple component registration
-        #   MyApp.boot(:db) do |container|
+        #   MyApp.register_bootable(:db) do |container|
         #     require 'db'
         #
         #     container.register(:db, DB.new)
@@ -195,7 +195,7 @@ module Dry
         #   # system/boot/db.rb
         #   #
         #   # Component registration with lifecycle triggers
-        #   MyApp.boot(:db) do |container|
+        #   MyApp.register_bootable(:db) do |container|
         #     init do
         #       require 'db'
         #       DB.configure(ENV['DB_URL'])
@@ -214,7 +214,7 @@ module Dry
         #   # system/boot/db.rb
         #   #
         #   # Component registration which uses another bootable component
-        #   MyApp.boot(:db) do |container|
+        #   MyApp.register_bootable(:db) do |container|
         #     use :logger
         #
         #     start do
@@ -228,7 +228,7 @@ module Dry
         #   #
         #   # Component registration under a namespace. This will register the
         #   # db object under `persistence.db` key
-        #   MyApp.namespace(:persistence) do |persistence|
+        #   MyApp.register_bootable(:persistence, namespace: true) do |persistence|
         #     require 'db'
         #     DB.configure(ENV['DB_URL'], logger: logger)
         #     persistence.register(:db, DB.new)
@@ -241,7 +241,7 @@ module Dry
         # @return [self]
         #
         # @api public
-        def boot(name, **opts, &block)
+        def register_bootable(name, **opts, &block)
           if components.key?(name)
             raise DuplicatedComponentKeyError, <<-STR
               Bootable component #{name.inspect} was already registered
@@ -259,21 +259,7 @@ module Dry
 
           components[name] = component
         end
-        deprecate :finalize, :boot
-
-        # @api private
-        def boot_external(identifier, from:, key: nil, namespace: nil, &block)
-          System.providers[from].component(
-            identifier, key: key, namespace: namespace, finalize: block, container: self
-          )
-        end
-
-        # @api private
-        def boot_local(identifier, namespace: nil, &block)
-          Components::Bootable.new(
-            identifier, container: self, namespace: namespace, &block
-          )
-        end
+        deprecate :finalize, :register_bootable
 
         # Return if a container was finalized
         #
@@ -334,14 +320,14 @@ module Dry
         # As a result, `init` and `start` lifecycle triggers are called
         #
         # @example
-        #   MyApp.start(:persistence)
+        #   MyApp.start_bootable(:persistence)
         #
         # @param name [Symbol] the name of a registered bootable component
         #
         # @return [self]
         #
         # @api public
-        def start(name)
+        def start_bootable(name)
           booter.start(name)
           self
         end
@@ -352,14 +338,14 @@ module Dry
         # needed but its started environment is not required
         #
         # @example
-        #   MyApp.init(:persistence)
+        #   MyApp.init_bootable(:persistence)
         #
         # @param [Symbol] name The name of a registered bootable component
         #
         # @return [self]
         #
         # @api public
-        def init(name)
+        def init_bootable(name)
           booter.init(name)
           self
         end
@@ -367,14 +353,14 @@ module Dry
         # Stop a specific component but calls only `stop` lifecycle trigger
         #
         # @example
-        #   MyApp.stop(:persistence)
+        #   MyApp.stop_bootable(:persistence)
         #
         # @param [Symbol] name The name of a registered bootable component
         #
         # @return [self]
         #
         # @api public
-        def stop(name)
+        def stop_bootable(name)
           booter.stop(name)
           self
         end
@@ -603,6 +589,18 @@ module Dry
         end
 
         private
+
+        def boot_external(identifier, from:, key: nil, namespace: nil, &block)
+          System.providers[from].component(
+            identifier, key: key, namespace: namespace, finalize: block, container: self
+          )
+        end
+
+        def boot_local(identifier, namespace: nil, &block)
+          Components::Bootable.new(
+            identifier, container: self, namespace: namespace, &block
+          )
+        end
 
         def load_local_component(component)
           if component.auto_register?
