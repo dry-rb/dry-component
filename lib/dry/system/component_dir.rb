@@ -1,4 +1,5 @@
 require "pathname"
+require "dry/system/constants"
 require_relative "constants"
 require_relative "identifier"
 require_relative "magic_comments_parser"
@@ -30,8 +31,9 @@ module Dry
 
       # Returns a component for a given identifier if a matching component file could be
       # found within the component dir
-      #
-      # This will search within the component dir's configured default_namespace first,
+      # # WIP
+      # FIXME: REMOVE THIS WIP COMMENT ABOVE
+      # This will search within the component dir's configured namespaces first, # WIP
       # then fall back to searching for a non-namespaced file
       #
       # @param identifier [String] the identifier string
@@ -39,29 +41,60 @@ module Dry
       #
       # @api private
       def component_for_identifier(identifier)
-        identifier = Identifier.new(
-          identifier,
-          namespace: default_namespace,
-          separator: container.config.namespace_separator
-        )
+        namespaces.each do |namespace|
+          identifier = Identifier.new(identifier, separator: container.config.namespace_separator)
 
-        if (file_path = find_component_file(identifier.path))
-          return build_component(identifier, file_path)
+          if (file_path = find_component_file(identifier, namespace))
+            return build_component(identifier, namespace, file_path)
+          end
         end
 
-        identifier = identifier.with(namespace: nil)
-        if (file_path = find_component_file(identifier.path))
-          build_component(identifier, file_path)
+        nil
+      end
+
+      # TODO: support calling without block, returning enum
+      def each_component(&block)
+        each_file do |file_path, namespace|
+          yield component_for_path(file_path, namespace)
         end
+      end
+
+      private
+
+      def each_file
+        raise ComponentDirNotFoundError, full_path unless Dir.exist?(full_path)
+
+        namespaces.each do |namespace|
+          files(namespace).each do |file|
+            yield file, namespace
+          end
+        end
+      end
+
+      def files(namespace)
+        if !namespace.root?
+          Dir["#{full_path}/#{namespace.path}/**/#{RB_GLOB}"].sort
+        else
+          non_root_paths = namespaces.to_a.reject(&:root?).map(&:path)
+
+          Dir["#{full_path}/**/#{RB_GLOB}"].reject { |file_path|
+            Pathname(file_path).relative_path_from(full_path).to_s.start_with?(*non_root_paths)
+          }.sort
+        end
+      end
+
+      # Returns the full path of the component directory
+      #
+      # @return [Pathname]
+      def full_path
+        container.root.join(path)
       end
 
       # Returns a component for a full path to a Ruby source file within the component dir
       #
       # @param path [String] the full path to the file
       # @return [Dry::System::Component] the component
-      #
-      # @api private
-      def component_for_path(path)
+      def component_for_path(path, namespace)
         separator = container.config.namespace_separator
 
         key = Pathname(path).relative_path_from(full_path).to_s
@@ -70,46 +103,43 @@ module Dry
           .join(separator)
 
         identifier = Identifier.new(key, separator: separator)
+          .namespaced(
+            from: namespace.path&.gsub(PATH_SEPARATOR, separator),
+            to: namespace.identifier_namespace,
+          )
 
-        if identifier.start_with?(default_namespace)
-          identifier = identifier.dequalified(default_namespace, namespace: default_namespace)
-        end
-
-        build_component(identifier, path)
+        build_component(identifier, namespace, path)
       end
 
-      # Returns the full path of the component directory
-      #
-      # @return [Pathname]
-      # @api private
-      def full_path
-        container.root.join(path)
+      def find_component_file(identifier, namespace)
+        file_name = "#{identifier.joined(PATH_SEPARATOR)}#{RB_EXT}"
+
+        component_file =
+          if namespace.path?
+            full_path.join(namespace.path, file_name)
+          else
+            full_path.join(file_name)
+          end
+
+        component_file if component_file.exist?
       end
 
-      # @api private
-      def component_options
-        {
-          auto_register: auto_register,
-          loader: loader,
-          memoize: memoize
-        }
-      end
-
-      private
-
-      def build_component(identifier, file_path)
+      def build_component(identifier, namespace, file_path)
         options = {
           inflector: container.config.inflector,
           **component_options,
           **MagicCommentsParser.(file_path)
         }
 
-        Component.new(identifier, file_path: file_path, **options)
+        Component.new(identifier, namespace: namespace, file_path: file_path, **options)
       end
 
-      def find_component_file(component_path)
-        component_file = full_path.join("#{component_path}#{RB_EXT}")
-        component_file if component_file.exist?
+      def component_options
+        {
+          auto_register: auto_register,
+          loader: loader,
+          memoize: memoize
+        }
       end
 
       def method_missing(name, *args, &block)

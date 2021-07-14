@@ -17,7 +17,7 @@ module Dry
     #
     # @api public
     class Component
-      include Dry::Equalizer(:identifier, :file_path, :options)
+      include Dry::Equalizer(:identifier, :namespace, :file_path, :options)
 
       DEFAULT_OPTIONS = {
         separator: DEFAULT_SEPARATOR,
@@ -28,6 +28,9 @@ module Dry
       # @!attribute [r] identifier
       #   @return [String] component's unique identifier
       attr_reader :identifier
+
+      # TODO: docs
+      attr_reader :namespace
 
       # @!attribute [r] file_path
       #   @return [String, nil] full path to the component's file, if found
@@ -41,26 +44,21 @@ module Dry
       def self.new(identifier, options = EMPTY_HASH)
         options = DEFAULT_OPTIONS.merge(options)
 
-        namespace = options.delete(:namespace)
-        separator = options.delete(:separator)
-
         identifier =
           if identifier.is_a?(Identifier)
             identifier
           else
-            Identifier.new(
-              identifier,
-              namespace: namespace,
-              separator: separator
-            )
+            # TODO: remove the need for this branch?
+            Identifier.new(identifier, separator: options.delete(:separator))
           end
 
         super(identifier, **options)
       end
 
       # @api private
-      def initialize(identifier, file_path: nil, **options)
+      def initialize(identifier, namespace: nil, file_path: nil, **options)
         @identifier = identifier
+        @namespace = namespace
         @file_path = file_path
         @options = options
       end
@@ -83,12 +81,36 @@ module Dry
         identifier.to_s
       end
 
-      def path
-        identifier.path
-      end
-
       def root_key
         identifier.root_key
+      end
+
+      # TODO: update docs to reflect it's in component now
+      #
+      # Returns a path-delimited representation of the identifier, with the namespace
+      # incorporated. This path is intended for usage when requiring the component's
+      # source file.
+      #
+      # @example
+      #   identifier.key # => "articles.operations.create"
+      #   identifier.namespace # => "admin"
+      #
+      #   identifier.path # => "admin/articles/operations/create"
+      #
+      # @return [String] the path
+      # @api public
+      def path
+        path = identifier.joined(PATH_SEPARATOR)
+
+        if namespace&.path
+          "#{namespace.path}/#{path}"
+        else
+          path
+        end
+      end
+
+      def const_namespace
+        namespace.const_namespace&.gsub(identifier.separator, PATH_SEPARATOR)
       end
 
       # Returns true if the component has a corresponding file
@@ -101,12 +123,12 @@ module Dry
 
       # @api private
       def loader
-        options[:loader]
+        options.fetch(:loader)
       end
 
       # @api private
       def inflector
-        options[:inflector]
+        options.fetch(:inflector)
       end
 
       # @api private

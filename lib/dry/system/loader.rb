@@ -60,9 +60,15 @@ module Dry
         #
         # @api public
         def constant(component)
-          inflector = component.inflector
+          const_path = component.path
+          const_namespace = component.const_namespace
 
-          inflector.constantize(inflector.camelize(component.path))
+          if const_namespace && !const_path.start_with?(const_namespace)
+            const_path = "#{const_namespace}/#{const_path}"
+          end
+
+          inflector = component.inflector
+          inflector.constantize(inflector.camelize(const_path))
         end
 
         private

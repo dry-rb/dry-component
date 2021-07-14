@@ -1,5 +1,6 @@
 require "dry/configurable"
 require "dry/system/loader"
+require_relative "namespaces"
 
 module Dry
   module System
@@ -93,7 +94,12 @@ module Dry
         #   @return [String, nil]
         #
         #   @see default_namespace=
-        setting :default_namespace
+
+        # FIXME: fix docs above
+        setting :namespaces, default: Namespaces.new, cloneable: true
+
+        # TODO: add deprecated default_namespace setting
+        # TODO: add `namespace` setting for nicer shortcut
 
         # @!method loader=(loader)
         #
@@ -180,12 +186,20 @@ module Dry
         #
         # @api private
         def configured?(key)
-          config._settings[key].input_defined?
+          # UGH
+          if key == :namespaces
+            !config.namespaces.empty?
+          else
+            config._settings[key].input_defined?
+          end
         end
 
         private
 
         def method_missing(name, *args, &block)
+          # TODO: handle this nicer
+          # return super if name == :namespaces=
+
           if config.respond_to?(name)
             config.public_send(name, *args, &block)
           else

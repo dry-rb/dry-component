@@ -13,24 +13,19 @@ module Dry
     #
     # @api public
     class Identifier
-      include Dry::Equalizer(:identifier, :namespace, :separator)
+      include Dry::Equalizer(:identifier, :separator)
 
       # @return [String] the identifier string
       # @api public
       attr_reader :identifier
-
-      # @return [String, nil] the namespace for the component
-      # @api public
-      attr_reader :namespace
 
       # @return [String] the configured namespace separator
       # @api public
       attr_reader :separator
 
       # @api private
-      def initialize(identifier, namespace: nil, separator: DEFAULT_SEPARATOR)
+      def initialize(identifier, separator: DEFAULT_SEPARATOR)
         @identifier = identifier.to_s
-        @namespace = namespace
         @separator = separator
       end
 
@@ -62,29 +57,6 @@ module Dry
         segments.first.to_sym
       end
 
-      # Returns a path-delimited representation of the identifier, with the namespace
-      # incorporated. This path is intended for usage when requiring the component's
-      # source file.
-      #
-      # @example
-      #   identifier.key # => "articles.operations.create"
-      #   identifier.namespace # => "admin"
-      #
-      #   identifier.path # => "admin/articles/operations/create"
-      #
-      # @return [String] the path
-      # @api public
-      def path
-        @require_path ||= identifier.gsub(separator, PATH_SEPARATOR).yield_self { |path|
-          if namespace
-            namespace_path = namespace.to_s.gsub(separator, PATH_SEPARATOR)
-            "#{namespace_path}#{PATH_SEPARATOR}#{path}"
-          else
-            path
-          end
-        }
-      end
-
       # Returns true if the given namespace prefix is part of the identifier's leading
       # namespaces
       #
@@ -103,6 +75,14 @@ module Dry
           identifier.eql?(leading_namespaces)
       end
 
+      # TODO: docs
+      # TODO: better name?
+      def joined(separator)
+        segments.join(separator)
+      end
+
+      # FIXME: update docs below for change from dequalified -> namespaced
+      #
       # Returns a copy of the identifier with the given leading namespaces removed from
       # the identifier string.
       #
@@ -116,35 +96,27 @@ module Dry
       #
       # @see #initialize
       # @api private
-      def dequalified(leading_namespaces, **options)
-        new_identifier = identifier.gsub(
-          /^#{Regexp.escape(leading_namespaces)}#{Regexp.escape(separator)}/,
-          EMPTY_STRING
-        )
+      def namespaced(from:, to:, **options)
+        # TODO: need tests for this case
+        return self if from == to
 
-        return self if new_identifier == identifier
+        # TODO: need tests for the `from.nil?` case
+        new_key =
+          if from.nil?
+            "#{to}#{separator}#{key}"
+          else
+            key.sub(
+              /^#{Regexp.escape(from.to_s)}#{Regexp.escape(separator)}/,
+              to || EMPTY_STRING
+            )
+          end
+
+        return self if new_key == key
 
         self.class.new(
-          new_identifier,
-          namespace: namespace,
+          new_key,
           separator: separator,
           **options
-        )
-      end
-
-      # Returns a copy of the identifier with the given options applied
-      #
-      # @param namespace [String, nil] a new namespace to be used
-      #
-      # @return [Dry::System::Identifier] the copy of the identifier
-      #
-      # @see #initialize
-      # @api private
-      def with(namespace:)
-        self.class.new(
-          identifier,
-          namespace: namespace,
-          separator: separator
         )
       end
 
